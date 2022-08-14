@@ -130,18 +130,29 @@ enum : std::uint64_t
 };
 
 
-static constexpr const auto FETCH = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | LSU_READ_ENABLE | PCU_INSTRUCTION_REGISTER_IN;
+
+static constexpr const auto µcode_length = 8;
+
+//typedef std::uint64_t µcode_type;
+using µcode_type = std::uint64_t;
+using µcode_line = std::array<µcode_type, µcode_length>;
 
 
 
-std::array<std::uint64_t, 8> emitMvb(std::uint64_t dest_in, std::uint64_t src_out)
+static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | LSU_READ_ENABLE,
+                            FETCH_INSN = FETCH_DATA | PCU_INSTRUCTION_REGISTER_IN;
+
+
+
+µcode_line emitMvb(µcode_type dest_in, µcode_type src_out)
 {
     return
     {
-        FETCH,
+        FETCH_INSN,
         dest_in | src_out,
         PC_SKIP_TO_NEXT_INSTRUCTION,
         0ull,
+        
         0ull,
         0ull,
         0ull,
@@ -149,23 +160,86 @@ std::array<std::uint64_t, 8> emitMvb(std::uint64_t dest_in, std::uint64_t src_ou
     };
 }
 
-std::array<std::uint64_t, 8> emitAlu2Arg(std::uint64_t dest_in, std::uint64_t dest_out, std::uint64_t src_out, std::uint64_t op)
+µcode_line emitAlu2Reg(µcode_type dest_in, µcode_type dest_out, µcode_type src_out, µcode_type op)
 {
     return
     {
-        FETCH,
+        FETCH_INSN,
         dest_out | ALU_WRITE_A | ALU_IN,
         src_out  | ALU_WRITE_B | ALU_IN,
         RF_FLAGS_OUT | ALU_WRITE_F | ALU_IN,
+        
         op | ALU_IN | ALU_WRITE_OUT,
-        ALU_OUT | dest_in,
+        ALU_OUT | RF_FLAGS_IN | dest_in,
         PC_SKIP_TO_NEXT_INSTRUCTION,
         0ull,
     };
 }
 
+µcode_line emitAluImm(µcode_type dest_in, µcode_type dest_out, µcode_type op)
+{
+    return
+    {
+        FETCH_INSN,
+        dest_out | ALU_WRITE_A | ALU_IN,
+        PC_ADDRESS_BUS_OUT | PC_ADDRESS_BUS_IN | PC_LOAD_VALUE,
+        FETCH_DATA | ALU_WRITE_B | ALU_IN,
+        
+        ALU_NOT | ALU_IN | ALU_WRITE_OUT,
+        ALU_OUT | RF_FLAGS_IN | dest_in,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
+        0ull,
+    };
+}
+
+µcode_line emitAluNot(µcode_type dest_in, µcode_type dest_out)
+{
+    return
+    {
+        FETCH_INSN,
+        dest_out | ALU_WRITE_A | ALU_IN,
+        RF_FLAGS_OUT | ALU_WRITE_F | ALU_IN,
+        ALU_NOT | ALU_IN | ALU_WRITE_OUT,
+        
+        ALU_OUT | RF_FLAGS_IN | dest_in,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
+        0ull,
+        0ull,
+    };
+}
 
 
+µcode_line emitNop(void)
+{
+    return
+    {
+        FETCH_INSN,
+        0ull,
+        0ull,
+        0ull,
+        
+        0ull,
+        0ull,
+        0ull,
+        0ull,
+    };
+}
+
+µcode_line emitBrk(void)
+{
+    return
+    {
+        FETCH_INSN,
+        IMMEDIATE_IN | IMM(0x08ull) | CONNECT_F_TO_DATA_BUS | RF_FLAGS_IN,
+        0ull,
+        0ull,
+        
+        0ull,
+        0ull,
+        0ull,
+        0ull,
+    };
+}
 
 
 int main(int argc, const char** argv)
@@ -183,81 +257,67 @@ int main(int argc, const char** argv)
                 std::array<std::array<std::uint64_t, 8>, std::numeric_limits<std::uint8_t>::max() + 1> µcode{ 0 };
                 
                 
-                
-                µcode[MVB_A_B] = emitMvb(RF_A_IN, RF_B_OUT);
-                µcode[MVB_A_C] = emitMvb(RF_A_IN, RF_C_OUT);
-                µcode[MVB_A_D] = emitMvb(RF_A_IN, RF_D_OUT);
-                
-                µcode[MVB_B_A] = emitMvb(RF_B_IN, RF_A_OUT);
-                µcode[MVB_B_C] = emitMvb(RF_B_IN, RF_C_OUT);
-                µcode[MVB_B_D] = emitMvb(RF_B_IN, RF_D_OUT);
-                
-                µcode[MVB_C_A] = emitMvb(RF_C_IN, RF_A_OUT);
-                µcode[MVB_C_B] = emitMvb(RF_C_IN, RF_B_OUT);
-                µcode[MVB_C_D] = emitMvb(RF_C_IN, RF_D_OUT);
-                
-                µcode[MVB_D_A] = emitMvb(RF_D_IN, RF_A_OUT);
-                µcode[MVB_D_B] = emitMvb(RF_D_IN, RF_B_OUT);
-                µcode[MVB_D_C] = emitMvb(RF_C_IN, RF_C_OUT);
+                µcode[NOP] = emitNop();
+                µcode[BRK] = emitBrk();
                 
                 
+#define MVB_INSN(x, y) µcode[MVB_##x##_##y] = emitMvb(RF_##x##_IN, RF_##y##_OUT)
+                MVB_INSN(A, B);
+                MVB_INSN(A, C);
+                MVB_INSN(A, D);
+                
+                MVB_INSN(B, A);
+                MVB_INSN(B, C);
+                MVB_INSN(B, D);
+                
+                MVB_INSN(C, A);
+                MVB_INSN(C, B);
+                MVB_INSN(C, D);
+                
+                MVB_INSN(D, A);
+                MVB_INSN(D, B);
+                MVB_INSN(D, C);
+#undef MVB_INSN
                 
                 
-                //fetch
-                µcode[0] =
-                {
-                    //PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | LSU_READ_ENABLE,
-                    0u,
-                    0u,
-                    0u,
-                    0u,
-                    
-                    0u,
-                    0u,
-                    0u,
-                    0u
-                };
+#define ALU_INSN(x, y, z, w) µcode[z##_##x##_##y] = emitAlu2Reg(RF_##x##_IN, RF_##x##_OUT, RF_##y##_OUT, ALU_##w)
+#define ALL_ALU_INSN(x, y) { ALU_INSN(x, y, ADC, ADDITION); ALU_INSN(x, y, SBB, SUBTRACTION); ALU_INSN(x, y, AND, AND); ALU_INSN(x, y, LOR, OR); }
+                ALL_ALU_INSN(A, B);
+                ALL_ALU_INSN(A, C);
+                ALL_ALU_INSN(A, D);
                 
-                µcode[NOP] = { 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u };
+                ALL_ALU_INSN(B, A);
+                ALL_ALU_INSN(B, C);
+                ALL_ALU_INSN(B, D);
                 
-                //brk impossible
-                µcode[BRK] =
-                {
-                    IMM(static_cast<std::uint64_t>(0b0001000)) | IMMEDIATE_IN | CONNECT_F_TO_DATA_BUS | RF_FLAGS_IN,
-                    PC_SKIP_TO_NEXT_INSTRUCTION,
-                    0ull,
-                    0ull,
-                    
-                    0ull,
-                    0ull,
-                    0ull,
-                    0ull
-                };
+                ALL_ALU_INSN(C, A);
+                ALL_ALU_INSN(C, B);
+                ALL_ALU_INSN(C, D);
                 
-                µcode[ADC_A_B] =
-                {
-                    RF_A_OUT | ALU_WRITE_A | ALU_IN,
-                    RF_B_OUT | ALU_WRITE_B | ALU_IN,
-                    RF_FLAGS_OUT | ALU_WRITE_F | ALU_IN,
-                    ALU_ADDITION | ALU_IN | ALU_WRITE_OUT,
-                    ALU_OUT | RF_A_IN,
-                    PC_SKIP_TO_NEXT_INSTRUCTION,
-                    0ull,
-                    0ull,
-                };
+                ALL_ALU_INSN(D, A);
+                ALL_ALU_INSN(D, B);
+                ALL_ALU_INSN(D, C);
+#undef ALL_ALU_INSN
+#undef ALU_INSN
                 
-                µcode[MVB_B_A] =
-                {
-                    RF_B_OUT | RF_A_IN,
-                    PC_SKIP_TO_NEXT_INSTRUCTION,
-                    0ull,
-                    0ull,
-                    
-                    0ull,
-                    0ull,
-                    0ull,
-                    0ull
-                };
+                
+#define NOT_INSN(x) µcode[NOT_##x] = emitAluNot(RF_##x##_IN, RF_##x##_OUT)
+                NOT_INSN(A);
+                NOT_INSN(B);
+                NOT_INSN(C);
+                NOT_INSN(D);
+#undef NOT_INSN
+                
+                
+#define ALU_INSN(x, z, w) µcode[z##_##x##_IMM] = emitAluImm(RF_##x##_IN, RF_##x##_OUT, ALU_##w)
+#define ALL_ALU_INSN(x) { ALU_INSN(x, ADC, ADDITION); ALU_INSN(x, SBB, SUBTRACTION); ALU_INSN(x, AND, AND); ALU_INSN(x, LOR, OR); ALU_INSN(x, ROR, ROTATE_RIGHT); ALU_INSN(x, ROL, ROTATE_LEFT); }
+                ALL_ALU_INSN(A);
+                ALL_ALU_INSN(B);
+                ALL_ALU_INSN(C);
+                ALL_ALU_INSN(D);
+#undef ALL_ALU_INSN
+#undef ALU_INSN
+                
                 
                 
                 //jnz
