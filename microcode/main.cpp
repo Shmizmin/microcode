@@ -97,8 +97,29 @@ using µcode_line = std::array<µcode_type, µcode_length>;
 
 
 
-static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | LSU_READ_ENABLE,
-                            FETCH_INSN = FETCH_DATA | PCU_INSTRUCTION_REGISTER_IN,
+
+static constexpr const auto FETCH_ROM_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | LSU_READ_ENABLE,
+
+
+                            ENABLE_EAU = EAU_ADDRESS_BUS_OUT | LSU_RAM_ENABLE,
+                            ENABLE_STACK = LSU_STACK_ENABLE | LSU_RAM_ENABLE,
+
+                            FETCH_RAM_DATA = ENABLE_EAU | LSU_READ_ENABLE,
+                            WRITE_RAM_DATA = ENABLE_EAU | LSU_WRITE_ENABLE,
+
+                            FETCH_STACK_DATA = ENABLE_STACK | LSU_READ_ENABLE,
+                            WRITE_STACK_DATA = ENABLE_STACK | LSU_WRITE_ENABLE,
+
+
+                            FETCH_INSN = FETCH_ROM_DATA | PCU_INSTRUCTION_REGISTER_IN,
+                            
+                            ALU_A_IN = ALU_WRITE_A | ALU_IN,
+                            ALU_B_IN = ALU_WRITE_B | ALU_IN,
+                            ALU_F_IN = ALU_WRITE_F | ALU_IN,
+                            
+                            EAU_LO_IN = EAU_DATA_BUS_IN | EAU_LO_SELECT,
+                            EAU_HI_IN = EAU_DATA_BUS_IN | EAU_HI_SELECT,
+
                             
                             PC_INCREMENT_BOTH = PC_LOAD_VALUE | PC_SKIP_TO_NEXT_INSTRUCTION;
 
@@ -125,13 +146,13 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     return
     {
         FETCH_INSN,
-        dest_out | ALU_WRITE_A | ALU_IN,
-        src_out  | ALU_WRITE_B | ALU_IN,
-        RF_FLAGS_OUT | ALU_WRITE_F | ALU_IN,
-        
+        dest_out | ALU_A_IN | RF_FLAGS_OUT | ALU_F_IN,
+        src_out | ALU_B_IN,
         op | ALU_IN | ALU_WRITE_OUT,
+        
         ALU_OUT | RF_FLAGS_IN | dest_in,
         PC_SKIP_TO_NEXT_INSTRUCTION,
+        0ull,
         0ull,
     };
 }
@@ -141,11 +162,12 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     return
     {
         FETCH_INSN,
-        dest_out | ALU_WRITE_A | ALU_IN,
+        dest_out | ALU_A_IN | RF_FLAGS_OUT | ALU_F_IN,
         PC_INCREMENT_BOTH,
-        FETCH_DATA | ALU_WRITE_B | ALU_IN,
+        FETCH_ROM_DATA | ALU_B_IN,
         
-        ALU_NOT | ALU_IN | ALU_WRITE_OUT,
+        
+        op | ALU_IN | ALU_WRITE_OUT,
         ALU_OUT | RF_FLAGS_IN | dest_in,
         PC_SKIP_TO_NEXT_INSTRUCTION,
         0ull,
@@ -157,12 +179,12 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     return
     {
         FETCH_INSN,
-        dest_out | ALU_WRITE_A | ALU_IN,
+        dest_out | ALU_A_IN | RF_FLAGS_OUT | ALU_F_IN,
         PC_INCREMENT_BOTH,
-        FETCH_DATA | EAU_DATA_BUS_IN | EAU_LO_SELECT | PC_INCREMENT_BOTH, //determine endianness-should be big
+        FETCH_ROM_DATA | EAU_LO_IN | PC_INCREMENT_BOTH,
         
-        FETCH_DATA | EAU_DATA_BUS_IN | EAU_HI_SELECT,
-        EAU_ADDRESS_BUS_OUT | LSU_RAM_ENABLE | LSU_READ_ENABLE | ALU_IN | ALU_WRITE_B,
+        FETCH_ROM_DATA | EAU_HI_IN,
+        FETCH_RAM_DATA | ALU_B_IN,
         op | ALU_IN | ALU_WRITE_OUT,
         ALU_OUT | RF_FLAGS_IN | dest_in,
     };
@@ -174,12 +196,12 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     return
     {
         FETCH_INSN,
-        dest_out | ALU_WRITE_A | ALU_IN,
-        RF_FLAGS_OUT | ALU_WRITE_F | ALU_IN,
+        dest_out | ALU_A_IN | RF_FLAGS_OUT | ALU_F_IN,
         ALU_NOT | ALU_IN | ALU_WRITE_OUT,
-        
         ALU_OUT | RF_FLAGS_IN | dest_in,
+        
         PC_SKIP_TO_NEXT_INSTRUCTION,
+        0ull,
         0ull,
         0ull,
     };
@@ -207,7 +229,7 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     return
     {
         FETCH_INSN,
-        IMMEDIATE_IN | IMM(0x08ull) | CONNECT_F_TO_DATA_BUS | RF_FLAGS_IN,
+        IMMEDIATE_IN | IMM(0x08ull) | CONNECT_F_TO_DATA_BUS | RF_FLAGS_IN, //refactor to use BRK_OUT (constant 0x08 on data bus in hardware) | RF_FLAGS_IN
         PC_SKIP_TO_NEXT_INSTRUCTION,
         0ull,
         
@@ -240,7 +262,7 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     {
         FETCH_INSN,
         PC_INCREMENT_BOTH,
-        FETCH_DATA | dest_in,
+        FETCH_ROM_DATA | dest_in,
         PC_SKIP_TO_NEXT_INSTRUCTION,
         
         0ull,
@@ -256,11 +278,11 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     {
         FETCH_INSN,
         PC_INCREMENT_BOTH,
-        FETCH_DATA | EAU_DATA_BUS_IN | EAU_LO_SELECT,
+        FETCH_ROM_DATA | EAU_LO_IN,
         PC_INCREMENT_BOTH,
         
-        FETCH_DATA | EAU_DATA_BUS_IN | EAU_HI_SELECT,
-        EAU_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | LSU_READ_ENABLE | dest_in,
+        FETCH_ROM_DATA | EAU_HI_IN,
+        FETCH_RAM_DATA | dest_in,
         PC_SKIP_TO_NEXT_INSTRUCTION,
         0ull,
     };
@@ -272,11 +294,11 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     {
         FETCH_INSN,
         PC_INCREMENT_BOTH,
-        FETCH_DATA | EAU_DATA_BUS_IN | EAU_LO_SELECT,
+        FETCH_ROM_DATA | EAU_LO_IN,
         PC_INCREMENT_BOTH,
         
-        FETCH_DATA | EAU_DATA_BUS_IN | EAU_HI_SELECT,
-        EAU_ADDRESS_BUS_OUT | LSU_RAM_ENABLE | LSU_WRITE_ENABLE | src_out,
+        FETCH_ROM_DATA | EAU_HI_IN,
+        WRITE_RAM_DATA | src_out,
         PC_SKIP_TO_NEXT_INSTRUCTION,
         0ull,
     };
@@ -295,7 +317,7 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
         
         temp[4],
         PC_INCREMENT_BOTH,
-        FETCH_DATA | RF_TEMP_IN,
+        FETCH_ROM_DATA | RF_TEMP_IN,
         temp[5] | RF_TEMP_OUT,
     };
 }
@@ -306,13 +328,14 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     return
     {
         FETCH_INSN,
-        src1_out | EAU_DATA_BUS_IN | EAU_LO_SELECT,
-        src2_out | EAU_DATA_BUS_IN | EAU_HI_SELECT,
-        EAU_ADDRESS_BUS_OUT | LSU_RAM_ENABLE | LSU_READ_ENABLE | dest_in,
+        PC_INCREMENT_BOTH,
+        src1_out | EAU_LO_IN,
+        PC_INCREMENT_BOTH,
         
+        
+        src2_out | EAU_HI_IN,
+        FETCH_RAM_DATA | dest_in,
         PC_SKIP_TO_NEXT_INSTRUCTION,
-        0ull,
-        0ull,
         0ull,
     };
 }
@@ -322,7 +345,7 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     return
     {
         FETCH_INSN,
-        LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_READ_ENABLE | dest_in,
+        FETCH_STACK_DATA | dest_in,
         LSU_DECREMENT_STACK_POINTER,
         PC_SKIP_TO_NEXT_INSTRUCTION,
         
@@ -338,9 +361,9 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     return
     {
         FETCH_INSN,
-        LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_READ_ENABLE | EAU_DATA_BUS_IN | EAU_LO_SELECT,
+        FETCH_STACK_DATA | EAU_LO_IN,
         LSU_DECREMENT_STACK_POINTER,
-        LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_READ_ENABLE | EAU_DATA_BUS_IN | EAU_HI_SELECT,
+        FETCH_STACK_DATA | EAU_HI_IN,
         
         LSU_DECREMENT_STACK_POINTER,
         EAU_ADDRESS_BUS_OUT | PC_ADDRESS_BUS_IN | PC_LOAD_VALUE,
@@ -355,7 +378,7 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     {
         FETCH_INSN,
         LSU_INCREMENT_STACK_POINTER,
-        LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_WRITE_ENABLE | src_out,
+        WRITE_STACK_DATA | src_out,
         PC_SKIP_TO_NEXT_INSTRUCTION,
         
         0ull,
@@ -372,10 +395,10 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
         FETCH_INSN,
         LSU_INCREMENT_STACK_POINTER,
         PC_ADDRESS_BUS_OUT | EAU_ADDRESS_BUS_IN,
-        EAU_LO_SELECT | EAU_DATA_BUS_OUT | LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_WRITE_ENABLE,
+        EAU_LO_SELECT | EAU_DATA_BUS_OUT | WRITE_STACK_DATA,
         
         LSU_INCREMENT_STACK_POINTER,
-        EAU_HI_SELECT | EAU_DATA_BUS_OUT | LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_WRITE_ENABLE,
+        EAU_HI_SELECT | EAU_DATA_BUS_OUT | WRITE_STACK_DATA,
         PC_SKIP_TO_NEXT_INSTRUCTION,
         0ull,
     };
@@ -388,7 +411,7 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
         FETCH_INSN,
         PC_INCREMENT_BOTH,
         LSU_INCREMENT_STACK_POINTER,
-        FETCH_DATA | LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_WRITE_ENABLE,
+        FETCH_ROM_DATA | WRITE_STACK_DATA,
         
         PC_SKIP_TO_NEXT_INSTRUCTION,
         0ull,
@@ -403,13 +426,13 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     {
         FETCH_INSN,
         PC_INCREMENT_BOTH,
-        LSU_INCREMENT_STACK_POINTER,
-        FETCH_DATA | RF_TEMP_IN,
-        
+        FETCH_ROM_DATA | EAU_LO_IN,
         PC_INCREMENT_BOTH,
-        FETCH_DATA | LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_WRITE_ENABLE,
+        
+        FETCH_ROM_DATA | EAU_HI_IN,
         LSU_INCREMENT_STACK_POINTER,
-        RF_TEMP_OUT | LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_WRITE_ENABLE,
+        FETCH_RAM_DATA | WRITE_STACK_DATA,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
     };
 }
 
@@ -417,13 +440,13 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
 {
     return
     {
-        FETCH_INSN, //in hardware circuit should be PC load = load in | jump enable (comes from decoder)
+        FETCH_INSN, //in hardware circuit should be PC load control line = from decoder load in | jump enable (comes from decoder)
         PC_INCREMENT_BOTH,
-        FETCH_DATA | EAU_DATA_BUS_IN | EAU_LO_SELECT,
+        FETCH_ROM_DATA | EAU_LO_IN,
         PC_INCREMENT_BOTH,
         
-        FETCH_DATA | EAU_DATA_BUS_IN | EAU_HI_SELECT,
-        EAU_ADDRESS_BUS_OUT | PC_ADDRESS_BUS_IN | condition,
+        FETCH_ROM_DATA | EAU_HI_IN,
+        EAU_ADDRESS_BUS_OUT | PC_ADDRESS_BUS_IN | condition, //condition will be jgz, jez, or jcs; hardware will decode to determine if condition met to jump
         PC_SKIP_TO_NEXT_INSTRUCTION,
         0ull,
     };
@@ -437,9 +460,7 @@ int main(int argc, const char** argv)
     {
         case 2:
         {
-            std::string_view path = argv[1];
-            
-            std::ofstream file(path, std::ios::out | std::ios::binary);
+            std::ofstream file(argv[1], std::ios::out | std::ios::binary);
             
             if (file.good())
             {
@@ -656,14 +677,16 @@ int main(int argc, const char** argv)
             }
             else
             {
-                std::fprintf(stderr, "[Error] Could not open file %s for writing\n", path.data());
+                std::fprintf(stderr, "[Error] Could not open file %s for writing\n", argv[1]);
                 return EXIT_FAILURE;
             }
         } break;
             
         default:
+        {
             std::fprintf(stderr, "[Error] 0ull,Invalid number of arguments specified\n");
             return EXIT_FAILURE;
+        }
     }
     
     return EXIT_SUCCESS;
