@@ -6,6 +6,7 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 #include <limits>
 
@@ -89,11 +90,12 @@ enum : std::uint64_t
 
 
 
-static constexpr const auto µcode_length = 8;
+
+static constexpr const auto µcode_line_width = 8;
 
 //typedef std::uint64_t µcode_type;
 using µcode_type = std::uint64_t;
-using µcode_line = std::array<µcode_type, µcode_length>;
+using µcode_line = std::array<µcode_type, µcode_line_width>;
 
 
 
@@ -453,7 +455,6 @@ static constexpr const auto FETCH_ROM_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE
 }
 
 
-
 int main(int argc, const char** argv)
 {
     switch (argc)
@@ -464,7 +465,8 @@ int main(int argc, const char** argv)
             
             if (file.good())
             {
-                std::array<std::array<std::uint64_t, 8>, std::numeric_limits<std::uint8_t>::max() + 1> µcode{ 0 };
+                std::array<µcode_line, (std::numeric_limits<std::uint8_t>::max() + 1)> µcode{ 0 };
+                
                 
                 
                 µcode[NOP] = emitNop();
@@ -605,75 +607,15 @@ int main(int argc, const char** argv)
                 JUMP_INSN(JEZ, JUMP_ON_ZERO);
                 JUMP_INSN(JCS, JUMP_CARRY_SET);
 #undef JUMP_INSN
-                                    
                 
-                //jnz
-                //and Flags with zero bit
-                //load temp reg with 255
-                
-    
-                auto counter = 0;
-                
-            
-                for (auto i = 0; i < µcode.size(); ++i)
+                //write contents to a file
+                for (auto&& µcode_line : µcode)
                 {
-                    for (auto j = 0; j < µcode[0].size(); ++j)
+                    for (auto&& µop : µcode_line)
                     {
-                        auto µop = µcode[i][j];
-                        
-                        counter++;
-                        std::fprintf(stderr, "Counter: %i\n", counter);
-                        
-                        std::uint32_t hi = ((µop & 0xFFFFFFFF00000000) >> 32);
-                        std::uint32_t lo = ((µop & 0x00000000FFFFFFFF) >> 0);
-                        
-                        std::uint16_t hi_hi = ((hi & 0xFFFF0000) >> 16);
-                        std::uint16_t hi_lo = ((hi & 0x0000FFFF) >> 0);
-                        
-                        std::uint16_t lo_hi = ((lo & 0xFFFF0000) >> 16);
-                        std::uint16_t lo_lo = ((lo & 0x0000FFFF) >> 0);
-                        
-                        
-                        
-
-                        std::uint8_t hi_hi_hi = ((hi_hi & 0xFF00) >> 8);
-                        std::uint8_t hi_hi_lo = ((hi_hi & 0x00FF) >> 0);
-                        
-                        std::uint8_t hi_lo_hi = ((hi_lo & 0xFF00) >> 8);
-                        std::uint8_t hi_lo_lo = ((hi_lo & 0x00FF) >> 0);
-                        
-                        
-                        std::uint8_t lo_hi_hi = ((lo_hi & 0xFF00) >> 8);
-                        std::uint8_t lo_hi_lo = ((lo_hi & 0x00FF) >> 0);
-                        
-                        std::uint8_t lo_lo_hi = ((lo_lo & 0xFF00) >> 8);
-                        std::uint8_t lo_lo_lo = ((lo_lo & 0x00FF) >> 0);
-                        
-                        using b = std::uint8_t;
-                        
-#define WRITE(x) file.write(reinterpret_cast<char*>(&x), sizeof(x))
-                        
-                        
-                        WRITE(lo_lo_hi);
-                        WRITE(lo_lo_lo);
-                        
-                        WRITE(lo_hi_hi);
-                        WRITE(lo_hi_lo);
-                        
-                        WRITE(hi_lo_hi);
-                        WRITE(hi_lo_lo);
-                        
-                        WRITE(hi_hi_hi);
-                        WRITE(hi_hi_lo);
-                        
-                        
-                        
-                        
-                        //file.write(reinterpret_cast<char*>(&µop), sizeof(µop));
+                        file.write(reinterpret_cast<char*>(&µop), sizeof(µop));
                     }
                 }
-                
-                //file.write(buffer.data(), buffer.size() * sizeof(*buffer.data()));
             }
             else
             {
