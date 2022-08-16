@@ -12,53 +12,6 @@
 
 #include "opcode.h"
 
-/*
- PC:
- -Address bus output enable
- -Address bus input enable
- -Increment next instruction
- -Enable
- -Load
- 
- 
- ALU:
- -Input enable
- -Output enable
- -Write output
- -Write alu A
- -Write alu B
- -Write alu F
- 
- LSU:
- -Increment stack pointer
- -Decrement stack pointer
- -Read only memory enable
- -Random access memory enable
- -Read enable
- -Write enable
- -Flags output enable
- 
- EAU:
- -Effective address high write
- -Effective address low write
- -Data bus input enable
- -Address bus output enable
- 
- RF:
- -F register output enable
- -D register output enable
- -C register output enable
- -B register output enable
- -A register output enable
- -F register input enable
- -D register input enable
- -C register input enable
- -B register input enable
- -A register input enable
- 
- 
- 
- */
 
 #define BIT(x) (1ull << x##ull)
 #define IMM(x) (x << 56ull)
@@ -67,8 +20,13 @@
 enum : std::uint64_t
 {
     IMMEDIATE_IN = BIT(55),
-    
+    LSU_STACK_ENABLE = BIT(54),
 
+    EAU_ADDRESS_BUS_IN = BIT(53), //not in Logisim design
+    EAU_DATA_BUS_OUT = BIT(52),   //^
+    
+    REQUEST_JUMP = BIT(51),       //^
+    
     
     JUMP_GREATER_THAN_ZERO = BIT(45),
     JUMP_CARRY_SET         = BIT(44),
@@ -140,7 +98,9 @@ using µcode_line = std::array<µcode_type, µcode_length>;
 
 
 static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | LSU_READ_ENABLE,
-                            FETCH_INSN = FETCH_DATA | PCU_INSTRUCTION_REGISTER_IN;
+                            FETCH_INSN = FETCH_DATA | PCU_INSTRUCTION_REGISTER_IN,
+                            
+                            PC_INCREMENT_BOTH = PC_LOAD_VALUE | PC_SKIP_TO_NEXT_INSTRUCTION;
 
 
 
@@ -182,7 +142,7 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     {
         FETCH_INSN,
         dest_out | ALU_WRITE_A | ALU_IN,
-        PC_ADDRESS_BUS_OUT | PC_ADDRESS_BUS_IN | PC_LOAD_VALUE,
+        PC_INCREMENT_BOTH,
         FETCH_DATA | ALU_WRITE_B | ALU_IN,
         
         ALU_NOT | ALU_IN | ALU_WRITE_OUT,
@@ -191,6 +151,23 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
         0ull,
     };
 }
+
+µcode_line emitAluMem(µcode_type dest_in, µcode_type dest_out, µcode_type op)
+{
+    return
+    {
+        FETCH_INSN,
+        dest_out | ALU_WRITE_A | ALU_IN,
+        PC_INCREMENT_BOTH,
+        FETCH_DATA | EAU_DATA_BUS_IN | EAU_LO_SELECT | PC_INCREMENT_BOTH, //determine endianness-should be big
+        
+        FETCH_DATA | EAU_DATA_BUS_IN | EAU_HI_SELECT,
+        EAU_ADDRESS_BUS_OUT | LSU_RAM_ENABLE | LSU_READ_ENABLE | ALU_IN | ALU_WRITE_B,
+        op | ALU_IN | ALU_WRITE_OUT,
+        ALU_OUT | RF_FLAGS_IN | dest_in,
+    };
+}
+
 
 µcode_line emitAluNot(µcode_type dest_in, µcode_type dest_out)
 {
@@ -214,7 +191,7 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     return
     {
         FETCH_INSN,
-        0ull,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
         0ull,
         0ull,
         
@@ -231,7 +208,7 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
     {
         FETCH_INSN,
         IMMEDIATE_IN | IMM(0x08ull) | CONNECT_F_TO_DATA_BUS | RF_FLAGS_IN,
-        0ull,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
         0ull,
         
         0ull,
@@ -240,6 +217,218 @@ static constexpr const auto FETCH_DATA = PC_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | L
         0ull,
     };
 }
+
+µcode_line emitMvbF(µcode_type dest_in, µcode_type src_out)
+{
+    return
+    {
+        FETCH_INSN,
+        dest_in | src_out | CONNECT_F_TO_DATA_BUS,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
+        0ull,
+        
+        0ull,
+        0ull,
+        0ull,
+        0ull,
+    };
+}
+
+µcode_line emitLdbImm(µcode_type dest_in)
+{
+    return
+    {
+        FETCH_INSN,
+        PC_INCREMENT_BOTH,
+        FETCH_DATA | dest_in,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
+        
+        0ull,
+        0ull,
+        0ull,
+        0ull,
+    };
+}
+
+µcode_line emitLdbMem(µcode_type dest_in)
+{
+    return
+    {
+        FETCH_INSN,
+        PC_INCREMENT_BOTH,
+        FETCH_DATA | EAU_DATA_BUS_IN | EAU_LO_SELECT,
+        PC_INCREMENT_BOTH,
+        
+        FETCH_DATA | EAU_DATA_BUS_IN | EAU_HI_SELECT,
+        EAU_ADDRESS_BUS_OUT | LSU_ROM_ENABLE | LSU_READ_ENABLE | dest_in,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
+        0ull,
+    };
+}
+
+µcode_line emitStbMem(µcode_type src_out)
+{
+    return
+    {
+        FETCH_INSN,
+        PC_INCREMENT_BOTH,
+        FETCH_DATA | EAU_DATA_BUS_IN | EAU_LO_SELECT,
+        PC_INCREMENT_BOTH,
+        
+        FETCH_DATA | EAU_DATA_BUS_IN | EAU_HI_SELECT,
+        EAU_ADDRESS_BUS_OUT | LSU_RAM_ENABLE | LSU_WRITE_ENABLE | src_out,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
+        0ull,
+    };
+}
+
+µcode_line emitStbMemImm(void)
+{
+    auto temp = emitStbMem(0ull);
+    
+    return
+    {
+        temp[0],
+        temp[1],
+        temp[2],
+        temp[3],
+        
+        temp[4],
+        PC_INCREMENT_BOTH,
+        FETCH_DATA | RF_TEMP_IN,
+        temp[5] | RF_TEMP_OUT,
+    };
+}
+
+
+µcode_line emitDeref(µcode_type src1_out, µcode_type src2_out, µcode_type dest_in)
+{
+    return
+    {
+        FETCH_INSN,
+        src1_out | EAU_DATA_BUS_IN | EAU_LO_SELECT,
+        src2_out | EAU_DATA_BUS_IN | EAU_HI_SELECT,
+        EAU_ADDRESS_BUS_OUT | LSU_RAM_ENABLE | LSU_READ_ENABLE | dest_in,
+        
+        PC_SKIP_TO_NEXT_INSTRUCTION,
+        0ull,
+        0ull,
+        0ull,
+    };
+}
+
+µcode_line emitPop8(µcode_type dest_in)
+{
+    return
+    {
+        FETCH_INSN,
+        LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_READ_ENABLE | dest_in,
+        LSU_DECREMENT_STACK_POINTER,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
+        
+        0ull,
+        0ull,
+        0ull,
+        0ull,
+    };
+}
+
+µcode_line emitPopIp(void)
+{
+    return
+    {
+        FETCH_INSN,
+        LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_READ_ENABLE | EAU_DATA_BUS_IN | EAU_LO_SELECT,
+        LSU_DECREMENT_STACK_POINTER,
+        LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_READ_ENABLE | EAU_DATA_BUS_IN | EAU_HI_SELECT,
+        
+        LSU_DECREMENT_STACK_POINTER,
+        EAU_ADDRESS_BUS_OUT | PC_ADDRESS_BUS_IN | PC_LOAD_VALUE,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
+        0ull,
+    };
+}
+
+µcode_line emitPush8(µcode_type src_out)
+{
+    return
+    {
+        FETCH_INSN,
+        LSU_INCREMENT_STACK_POINTER,
+        LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_WRITE_ENABLE | src_out,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
+        
+        0ull,
+        0ull,
+        0ull,
+        0ull,
+    };
+}
+
+µcode_line emitPushIp(void)
+{
+    return
+    {
+        FETCH_INSN,
+        LSU_INCREMENT_STACK_POINTER,
+        PC_ADDRESS_BUS_OUT | EAU_ADDRESS_BUS_IN,
+        EAU_LO_SELECT | EAU_DATA_BUS_OUT | LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_WRITE_ENABLE,
+        
+        LSU_INCREMENT_STACK_POINTER,
+        EAU_HI_SELECT | EAU_DATA_BUS_OUT | LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_WRITE_ENABLE,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
+        0ull,
+    };
+}
+
+µcode_line emitPushImm(void)
+{
+    return
+    {
+        FETCH_INSN,
+        PC_INCREMENT_BOTH,
+        LSU_INCREMENT_STACK_POINTER,
+        FETCH_DATA | LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_WRITE_ENABLE,
+        
+        PC_SKIP_TO_NEXT_INSTRUCTION,
+        0ull,
+        0ull,
+        0ull,
+    };
+}
+
+µcode_line emitPushMem(void)
+{
+    return
+    {
+        FETCH_INSN,
+        PC_INCREMENT_BOTH,
+        LSU_INCREMENT_STACK_POINTER,
+        FETCH_DATA | RF_TEMP_IN,
+        
+        PC_INCREMENT_BOTH,
+        FETCH_DATA | LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_WRITE_ENABLE,
+        LSU_INCREMENT_STACK_POINTER,
+        RF_TEMP_OUT | LSU_STACK_ENABLE | LSU_RAM_ENABLE | LSU_WRITE_ENABLE,
+    };
+}
+
+µcode_line emitJump(µcode_type condition)
+{
+    return
+    {
+        FETCH_INSN, //in hardware circuit should be PC load = load in | jump enable (comes from decoder)
+        PC_INCREMENT_BOTH,
+        FETCH_DATA | EAU_DATA_BUS_IN | EAU_LO_SELECT,
+        PC_INCREMENT_BOTH,
+        
+        FETCH_DATA | EAU_DATA_BUS_IN | EAU_HI_SELECT,
+        EAU_ADDRESS_BUS_OUT | PC_ADDRESS_BUS_IN | condition,
+        PC_SKIP_TO_NEXT_INSTRUCTION,
+        0ull,
+    };
+}
+
 
 
 int main(int argc, const char** argv)
@@ -319,6 +508,83 @@ int main(int argc, const char** argv)
 #undef ALU_INSN
                 
                 
+#define ALU_INSN(x, z, w) µcode[z##_##x##_IMM] = emitAluMem(RF_##x##_IN, RF_##x##_OUT, ALU_##w)
+#define ALL_ALU_INSN(x) { ALU_INSN(x, ADC, ADDITION); ALU_INSN(x, SBB, SUBTRACTION); ALU_INSN(x, AND, AND); ALU_INSN(x, LOR, OR); }
+                ALL_ALU_INSN(A);
+                ALL_ALU_INSN(B);
+                ALL_ALU_INSN(C);
+                ALL_ALU_INSN(D);
+#undef ALL_ALU_INSN
+#undef ALU_INSN
+                
+                
+#define MVB_INSN(x, y, z, w) µcode[MVB_##x##_##z] = emitMvbF(RF_##y##_IN, RF_##w##_OUT)
+                MVB_INSN(A, A, F, FLAGS);
+                MVB_INSN(B, B, F, FLAGS);
+                MVB_INSN(C, C, F, FLAGS);
+                MVB_INSN(D, D, F, FLAGS);
+                
+                MVB_INSN(F, FLAGS, A, A);
+                MVB_INSN(F, FLAGS, B, B);
+                MVB_INSN(F, FLAGS, C, C);
+                MVB_INSN(F, FLAGS, D, D);
+#undef MVB_INSN
+                
+#define LDB_INSN(x) µcode[LDB_##x##_IMM] = emitLdbImm(RF_##x##_IN)
+                LDB_INSN(A);
+                LDB_INSN(B);
+                LDB_INSN(C);
+                LDB_INSN(D);
+#undef LDB_INSN
+                
+#define LDB_INSN(x) µcode[LDB_##x##_MEM] = emitLdbMem(RF_##x##_IN)
+                LDB_INSN(A);
+                LDB_INSN(B);
+                LDB_INSN(C);
+                LDB_INSN(D);
+#undef LDB_INSN
+                
+#define STB_INSN(x) µcode[STB_MEM_##x] = emitStbMem(RF_##x##_OUT)
+                STB_INSN(A);
+                STB_INSN(B);
+                STB_INSN(C);
+                STB_INSN(D);
+#undef STB_INSN
+                
+                µcode[STB_MEM_IMM] = emitStbMemImm();
+                
+                µcode[DEREF_AB_A] = emitDeref(RF_A_OUT, RF_B_OUT, RF_A_IN);
+                µcode[DEREF_CD_C] = emitDeref(RF_C_OUT, RF_D_OUT, RF_C_IN);
+                
+#define POP_INSN(x, y) µcode[POP_##x] = emitPop8(y)
+                POP_INSN(A, RF_A_IN);
+                POP_INSN(B, RF_B_IN);
+                POP_INSN(C, RF_C_IN);
+                POP_INSN(D, RF_D_IN);
+                POP_INSN(F, RF_FLAGS_IN  | CONNECT_F_TO_DATA_BUS);
+                POP_INSN(DISCARD, 0ull);
+#undef POP_INSN
+               
+                µcode[POP_IP] = emitPopIp();
+                µcode[PUSH_IP] = emitPushIp();
+                
+#define PUSH_INSN(x, y) µcode[PUSH_##x] = emitPush8(y)
+                PUSH_INSN(A, RF_A_OUT);
+                PUSH_INSN(B, RF_B_OUT);
+                PUSH_INSN(C, RF_C_OUT);
+                PUSH_INSN(D, RF_D_OUT);
+                PUSH_INSN(F, RF_FLAGS_OUT | CONNECT_F_TO_DATA_BUS);
+#undef PUSH_INSN
+                
+                µcode[PUSH_IMM] = emitPushImm();
+                µcode[PUSH_MEM] = emitPushMem();
+                
+#define JUMP_INSN(x, y) µcode[x##_MEM] = emitJump(y)
+                JUMP_INSN(JGZ, JUMP_GREATER_THAN_ZERO);
+                JUMP_INSN(JEZ, JUMP_ON_ZERO);
+                JUMP_INSN(JCS, JUMP_CARRY_SET);
+#undef JUMP_INSN
+                                    
                 
                 //jnz
                 //and Flags with zero bit
@@ -390,13 +656,13 @@ int main(int argc, const char** argv)
             }
             else
             {
-                std::fprintf(stderr, "Could not open file %s for writing\n", path.data());
+                std::fprintf(stderr, "[Error] Could not open file %s for writing\n", path.data());
                 return EXIT_FAILURE;
             }
         } break;
             
         default:
-            std::fprintf(stderr, "Invalid number of arguments specified\n");
+            std::fprintf(stderr, "[Error] 0ull,Invalid number of arguments specified\n");
             return EXIT_FAILURE;
     }
     
