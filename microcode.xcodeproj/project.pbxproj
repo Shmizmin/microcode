@@ -7,7 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B33126C028A4CE7F001E52E6 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B33126BF28A4CE7F001E52E6 /* main.cpp */; };
+		B33126C028A4CE7F001E52E6 /* main_old.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B33126BF28A4CE7F001E52E6 /* main_old.cpp */; };
+		B3AEF5EB28DA5EA5009D417E /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B3AEF5EA28DA5EA5009D417E /* main.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -24,8 +25,9 @@
 
 /* Begin PBXFileReference section */
 		B33126BC28A4CE7F001E52E6 /* microcode */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = microcode; sourceTree = BUILT_PRODUCTS_DIR; };
-		B33126BF28A4CE7F001E52E6 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
+		B33126BF28A4CE7F001E52E6 /* main_old.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main_old.cpp; sourceTree = "<group>"; };
 		B33126C628A5A856001E52E6 /* opcode.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = opcode.h; path = ../../opcode.h; sourceTree = "<group>"; };
+		B3AEF5EA28DA5EA5009D417E /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -58,8 +60,9 @@
 		B33126BE28A4CE7F001E52E6 /* microcode */ = {
 			isa = PBXGroup;
 			children = (
+				B3AEF5EA28DA5EA5009D417E /* main.cpp */,
 				B33126C628A5A856001E52E6 /* opcode.h */,
-				B33126BF28A4CE7F001E52E6 /* main.cpp */,
+				B33126BF28A4CE7F001E52E6 /* main_old.cpp */,
 			);
 			path = microcode;
 			sourceTree = "<group>";
@@ -91,7 +94,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastUpgradeCheck = 1340;
+				LastUpgradeCheck = 1400;
 				TargetAttributes = {
 					B33126BB28A4CE7F001E52E6 = {
 						CreatedOnToolsVersion = 13.4.1;
@@ -121,7 +124,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B33126C028A4CE7F001E52E6 /* main.cpp in Sources */,
+				B3AEF5EB28DA5EA5009D417E /* main.cpp in Sources */,
+				B33126C028A4CE7F001E52E6 /* main_old.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -134,7 +138,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CLANG_ENABLE_OBJC_WEAK = YES;
@@ -161,6 +165,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -192,7 +197,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CLANG_ENABLE_OBJC_WEAK = YES;
@@ -219,6 +224,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -240,7 +246,9 @@
 		B33126C428A4CE7F001E52E6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = Q59J67R6R5;
 				ENABLE_HARDENED_RUNTIME = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -250,7 +258,9 @@
 		B33126C528A4CE7F001E52E6 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = Q59J67R6R5;
 				ENABLE_HARDENED_RUNTIME = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
