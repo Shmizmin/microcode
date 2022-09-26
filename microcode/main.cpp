@@ -2,7 +2,7 @@
 #include <cstdlib>
 
 #include <format>
-
+#include <iostream>
 #include <fstream>
 #include <array>
 #include <string>
@@ -86,8 +86,14 @@ namespace
         // address decomposition unit
         ADU_RL = BIT(33),
         ADU_RH = BIT(34),
-        ADU_OE = BIT(35),
+        ADU_WE = BIT(35),
         // /address decomposition unit
+        
+        // misc
+        OUT_Q1 = BIT(59),
+        OUT_Q2 = BIT(60),
+        SET_HALT = BIT(61),
+        // /misc
     };
     
     static constexpr const auto FETCH_INSTRUCTION = PC_OE | LSU_RE | IR_WE;
@@ -103,30 +109,80 @@ namespace
     // read from rom
     // write to ir
     
+    consteval auto chk_trap(bool trap) noexcept
+    {
+        return trap ? SET_HALT : 0;
+    }
     
-    
-    
-    
-    //register to register transfer
-    µcode_line mvb_data(µcode_type dest_in, µcode_type src_out) noexcept
+    consteval µcode_line emit_mvb(µcode_type dest_in, µcode_type src_out, bool trap) noexcept
     {
         return
         {
-            FETCH_INSTRUCTION,
-            src_out | dest_in,
-            PC_SKIP_TO_NEXT_INSTRUCTION,
-            0ull,
+            LEN(1) | FETCH_INSTRUCTION,
+            LEN(1) | src_out | dest_in,
+            LEN(1) | PC_INI | chk_trap(trap),
             
-            0ull,
-            0ull,
-            0ull,
-            0ull,
+            0ull, 0ull, 0ull, 0ull, 0ull
         };
     }
     
+    consteval µcode_line emit_alu2reg(µcode_type dest_in, µcode_type dest_out, µcode_type src_out, µcode_type op, bool trap) noexcept
+    {
+        return
+        {
+            LEN(1) | FETCH_INSTRUCTION,
+            LEN(1) | dest_out | ALU_WA,
+            LEN(1) | src_out | ALU_WB,
+            LEN(1) | op | ALU_OE | dest_in | RF_FI,
+            LEN(1) | PC_INI | chk_trap(trap),
+            
+            0ull, 0ull, 0ull
+        };
+    }
     
+    consteval µcode_line emit_aluimm(µcode_type dest_in, µcode_type dest_out, µcode_type op, bool trap) noexcept
+    {
+        return
+        {
+            LEN(2) | FETCH_INSTRUCTION,
+            LEN(2) | dest_out | ALU_WA,
+            LEN(2) | OUT_Q1 | ALU_WB,
+            LEN(2) | op | ALU_OE | dest_in | RF_FI,
+            LEN(2) | PC_INI | chk_trap(trap),
+            
+            0ull, 0ull, 0ull
+        };
+    }
+    
+    consteval µcode_line emit_alumem(µcode_type dest_in, µcode_type dest_out, µcode_type op, bool trap) noexcept
+    {
+        return
+        {
+            LEN(3) | FETCH_INSTRUCTION,
+            LEN(3) | dest_out | ALU_WA,
+            LEN(3) | OUT_Q1 | ACU_WL,
+            LEN(3) | OUT_Q2 | ACU_WH,
+            LEN(3) | ACU_OE | LSU_RE | ALU_WB,
+            LEN(3) | op | ALU_OE | dest_in | RF_FI,
+            LEN(3) | PC_INI | chk_trap(trap),
+            
+            0ull
+        };
+    }
     
 }
 
 
+int main(int argc, const char** argv)
+{
+    if (argc == 2)
+    {
+        
+    }
+    
+    else
+    {
+        std::cout << std::format("[Error] {} arguments were passed, but 1 was expected", (argc - 1)) << std::endl;
+    }
+}
 
