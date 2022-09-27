@@ -25,7 +25,7 @@ namespace
     }
     
     static constexpr const auto µcode_line_width = 8;
-
+    
     using µcode_type = std::uint64_t;
     using µcode_line = std::array<µcode_type, µcode_line_width>;
     
@@ -44,11 +44,11 @@ namespace
         RF_DO = BIT(8),
         RF_FO = BIT(9),
         // /register file
-    
+        
         // load store unit
         LSU_RE = BIT(10),
         LSU_WE = BIT(11),
-        LSU_SP_D = BIT(12), //stack pointer direction
+        LSU_SP_D = BIT(12), //stack pointer direction, 1 = decrement
         LSU_SP_WE = BIT(13),
         LSU_SP_EN = BIT(14),
         // /load store unit
@@ -90,13 +90,18 @@ namespace
         // /address decomposition unit
         
         // misc
+        CONNECT_FB = BIT(58),
         OUT_Q1 = BIT(59),
         OUT_Q2 = BIT(60),
         SET_HALT = BIT(61),
         // /misc
     };
     
-    static constexpr const auto FETCH_INSTRUCTION = PC_OE | LSU_RE | IR_WE;
+    static constexpr const auto FETCH_INSTRUCTION = PC_OE | LSU_RE | IR_WE,
+                                LSU_SP_INC = LSU_SP_EN | LSU_SP_WE,
+                                LSU_SP_DEC = LSU_SP_EN | LSU_SP_WE | LSU_SP_D,
+                                LSU_READ_STACK = LSU_SP_EN | LSU_RE,
+                                LSU_WRITE_STACK = LSU_SP_EN | LSU_WE;
     
     //determine how the instruction register will be written to after a reset to begin
     
@@ -114,15 +119,15 @@ namespace
         return trap ? SET_HALT : 0;
     }
     
-    consteval µcode_line emit_mvb(µcode_type dest_in, µcode_type src_out, bool trap) noexcept
+    consteval µcode_line emit_mvb(µcode_type dest_in, µcode_type src_out, bool trap, bool fmode) noexcept
     {
         return
         {
             LEN(1) | FETCH_INSTRUCTION,
-            LEN(1) | src_out | dest_in,
+            LEN(1) | src_out | dest_in | (fmode ? CONNECT_FB : 0),
             LEN(1) | PC_INI | chk_trap(trap),
             
-            0ull, 0ull, 0ull, 0ull, 0ull
+            0ull, 0ull, 0ull, 0ull, 0ull,
         };
     }
     
@@ -136,7 +141,7 @@ namespace
             LEN(1) | op | ALU_OE | dest_in | RF_FI,
             LEN(1) | PC_INI | chk_trap(trap),
             
-            0ull, 0ull, 0ull
+            0ull, 0ull, 0ull,
         };
     }
     
@@ -150,7 +155,7 @@ namespace
             LEN(2) | op | ALU_OE | dest_in | RF_FI,
             LEN(2) | PC_INI | chk_trap(trap),
             
-            0ull, 0ull, 0ull
+            0ull, 0ull, 0ull,
         };
     }
     
@@ -166,10 +171,128 @@ namespace
             LEN(3) | op | ALU_OE | dest_in | RF_FI,
             LEN(3) | PC_INI | chk_trap(trap),
             
-            0ull
+            0ull,
         };
     }
     
+    consteval µcode_line emit_alunot(µcode_type dest_in, µcode_type dest_out, bool trap) noexcept
+    {
+        return
+        {
+            LEN(1) | FETCH_INSTRUCTION,
+            LEN(1) | dest_out | ALU_WA,
+            LEN(1) | ALU_NOT | ALU_OE | dest_in | RF_FI,
+            LEN(1) | PC_INI | chk_trap(trap),
+            
+            0ull, 0ull, 0ull, 0ull,
+        };
+    }
+    
+    consteval µcode_line emit_nop(bool trap) noexcept
+    {
+        return
+        {
+            LEN(1) | FETCH_INSTRUCTION,
+            LEN(1) | PC_INI | chk_trap(trap),
+            
+            0ull, 0ull, 0ull, 0ull, 0ull, 0ull,
+        };
+    }
+    
+    //doesn't accept trapping
+    consteval µcode_line emit_brk(void) noexcept
+    {
+        return
+        {
+            LEN(1) | FETCH_INSTRUCTION,
+            LEN(1) | PC_INI | SET_HALT,
+            
+            0ull, 0ull, 0ull, 0ull, 0ull, 0ull,
+        };
+    }
+    
+    consteval µcode_line emit_ldbimm(µcode_type dest_in, bool trap) noexcept
+    {
+        return
+        {
+            LEN(2) | FETCH_INSTRUCTION,
+            LEN(2) | OUT_Q1 | dest_in,
+            LEN(2) | PC_INI | chk_trap(trap),
+            
+            0ull, 0ull, 0ull, 0ull, 0ull,
+        };
+    }
+    
+    consteval µcode_line emit_ldbmem(µcode_type dest_in, bool trap) noexcept
+    {
+        return
+        {
+            LEN(3) | FETCH_INSTRUCTION,
+            LEN(3) | OUT_Q1 | ACU_WL,
+            LEN(3) | OUT_Q2 | ACU_WH,
+            LEN(3) | ACU_OE | LSU_RE | dest_in,
+            LEN(3) | PC_INI | chk_trap(trap),
+            
+            0ull, 0ull, 0ull,
+        };
+    }
+    
+    consteval µcode_line emit_stbmem(µcode_type src_out, bool trap) noexcept
+    {
+        return
+        {
+            LEN(3) | FETCH_INSTRUCTION,
+            LEN(3) | OUT_Q1 | ACU_WL,
+            LEN(3) | OUT_Q2 | ACU_WH,
+            LEN(3) | ACU_OE | LSU_WE | src_out,
+            LEN(3) | PC_INI | chk_trap(trap),
+            
+            0ull, 0ull, 0ull,
+        };
+    }
+    
+    consteval µcode_line emit_pop8r(µcode_type dest_in, bool trap) noexcept
+    {
+        return
+        {
+            LEN(1) | FETCH_INSTRUCTION,
+            LEN(1) | LSU_READ_STACK | dest_in,
+            LEN(1) | LSU_SP_INC,
+            LEN(1) | PC_INI | chk_trap(trap),
+            
+            0ull, 0ull, 0ull, 0ull,
+        };
+    }
+    
+    consteval µcode_line emit_push8r(µcode_type src_out, bool trap) noexcept
+    {
+        return
+        {
+            LEN(1) | FETCH_INSTRUCTION,
+            LEN(1) | LSU_SP_DEC,
+            LEN(1) | LSU_WRITE_STACK | src_out,
+            LEN(1) | PC_INI | chk_trap(trap),
+            
+            0ull, 0ull, 0ull, 0ull,
+        };
+    }
+    
+
+    consteval µcode_line emit_popip(bool trap) noexcept
+    {
+        return
+        {
+            LEN(1) | FETCH_INSTRUCTION,
+            LEN(1) | LSU_READ_STACK | ACU_WL,
+            LEN(1) | LSU_SP_INC,
+            LEN(1) | LSU_READ_STACK | ACU_WH,
+            LEN(1) | LSU_SP_INC,
+            LEN(1) | ACU_OE | PC_LRC,
+            LEN(1) | PC_INI | chk_trap(trap),
+            
+            0ull,
+        };
+    }
 }
 
 
