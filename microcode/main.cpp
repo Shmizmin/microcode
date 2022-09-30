@@ -356,19 +356,66 @@ namespace
             µcode[BRK | NTRAP] = emit_brk();
         }
         
+#define CREATE_MVB_X_Y(x, y, z) µcode[MVB_##x##_##y | NTRAP] = emit_mvb(RF_##x##I, RF_##y##O, false, z); \
+                                µcode[MVB_##x##_##y |  TRAP] = emit_mvb(RF_##x##I, RF_##y##O, true,  z);
+        
         // r0 -> other register moving
         {
-            µcode[MVB_A_B | NTRAP] = emit_mvb(RF_AI, RF_BO, false, false);
-            µcode[MVB_A_B |  TRAP] = emit_mvb(RF_AI, RF_BO, true, false);
+            CREATE_MVB_X_Y(A, B, false)
+            CREATE_MVB_X_Y(A, C, false)
+            CREATE_MVB_X_Y(A, D, false)
+            CREATE_MVB_X_Y(A, F, true)
+        }
+        
+        // r1 -> other register moving
+        {
+            CREATE_MVB_X_Y(B, A, false)
+            CREATE_MVB_X_Y(B, C, false)
+            CREATE_MVB_X_Y(B, D, false)
+            CREATE_MVB_X_Y(B, F, true)
+        }
+        
+        // r2 -> other register moving
+        {
+            CREATE_MVB_X_Y(C, A, false)
+            CREATE_MVB_X_Y(C, B, false)
+            CREATE_MVB_X_Y(C, D, false)
+            CREATE_MVB_X_Y(C, F, true)
+        }
+        
+        // r3 -> other register moving
+        {
+            CREATE_MVB_X_Y(D, A, false)
+            CREATE_MVB_X_Y(D, B, false)
+            CREATE_MVB_X_Y(D, C, false)
+            CREATE_MVB_X_Y(D, F, true)
+        }
+        
+#undef CREATE_MVB_X_Y
+#define CREATE_ALUR_X_Y(x, y, o) µcode[ADC_##x##_##y | NTRAP] = emit_alu2reg(RF_##x##I, RF_##x##O, RF_##y##O, o, false); \
+                                 µcode[ADC_##x##_##y |  TRAP] = emit_alu2reg(RF_##x##I, RF_##x##O, RF_##y##O, o, true);
+#define ENUM_ALUR(x, y) CREATE_ALUR_X_Y(x, y, ALU_ADD) \
+                        CREATE_ALUR_X_Y(x, y, ALU_SUB) \
+                        CREATE_ALUR_X_Y(x, y, ALU_AND) \
+                        CREATE_ALUR_X_Y(x, y, ALU_OR)
+        
+        // r0 -> other register adding
+        {
+            ENUM_ALUR(A, B)
+            ENUM_ALUR(A, C)
+            ENUM_ALUR(A, D)
             
-            µcode[MVB_A_C | NTRAP] = emit_mvb(RF_AI, RF_CO, false, false);
-            µcode[MVB_A_C |  TRAP] = emit_mvb(RF_AI, RF_CO, true, false);
+            ENUM_ALUR(B, A)
+            ENUM_ALUR(B, C)
+            ENUM_ALUR(B, D)
             
-            µcode[MVB_A_D | NTRAP] = emit_mvb(RF_AI, RF_DO, false, false);
-            µcode[MVB_A_D |  TRAP] = emit_mvb(RF_AI, RF_DO, true, false);
+            ENUM_ALUR(C, A)
+            ENUM_ALUR(C, B)
+            ENUM_ALUR(C, D)
             
-            µcode[MVB_A_F | NTRAP] = emit_mvb(RF_AI, RF_FO, false, true);
-            µcode[MVB_A_F |  TRAP] = emit_mvb(RF_AI, RF_FO, true, true);
+            ENUM_ALUR(D, A)
+            ENUM_ALUR(D, B)
+            ENUM_ALUR(D, C)
         }
         
         
