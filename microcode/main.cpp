@@ -1,8 +1,7 @@
 #include <cstdint>
 #include <cstdlib>
+#include <cstdio>
 
-#include <format>
-#include <iostream>
 #include <fstream>
 #include <array>
 #include <string>
@@ -20,7 +19,7 @@ namespace
     
     consteval auto LEN(unsigned int s) noexcept
     {
-        //this is a bit hacky
+        // TODO: this is a bit hacky
         return (std::uint64_t{ s & 2 } << 62);
     }
     
@@ -90,6 +89,10 @@ namespace
         // /address decomposition unit
         
         // misc
+        FORCE_JUMP = BIT(54),
+        REQUEST_JEZ = BIT(55),
+        REQUEST_JCS = BIT(56),
+        REQUEST_JGZ = BIT(57),
         CONNECT_FB = BIT(58),
         OUT_Q1 = BIT(59),
         OUT_Q2 = BIT(60),
@@ -104,6 +107,7 @@ namespace
                                 LSU_WRITE_STACK = LSU_SP_EN | LSU_WE;
     
     //determine how the instruction register will be written to after a reset to begin
+    
     
     //maybe--on reset
     // PC_OE | PC_LRC | LSU_RE | IR_WE
@@ -287,13 +291,92 @@ namespace
             LEN(1) | LSU_SP_INC,
             LEN(1) | LSU_READ_STACK | ACU_WH,
             LEN(1) | LSU_SP_INC,
-            LEN(1) | ACU_OE | PC_LRC,
+            LEN(1) | ACU_OE | PC_LRC | FORCE_JUMP,
             LEN(1) | PC_INI | chk_trap(trap),
             
             0ull,
         };
     }
+    
+    consteval µcode_line emit_puship(bool trap) noexcept
+    {
+        return
+        {
+            LEN(1) | FETCH_INSTRUCTION,
+            LEN(1) | PC_OE | ADU_WE,
+            LEN(1) | LSU_SP_DEC,
+            LEN(1) | LSU_WRITE_STACK | ADU_RH,
+            LEN(1) | LSU_SP_DEC,
+            LEN(1) | LSU_WRITE_STACK | ADU_RL,
+            LEN(1) | PC_INI | chk_trap(trap),
+            
+            0ull,
+        };
+    }
+    
+    consteval µcode_line emit_pushimm(bool trap) noexcept
+    {
+        return
+        {
+            LEN(2) | FETCH_INSTRUCTION,
+            LEN(2) | LSU_SP_DEC,
+            LEN(2) | LSU_WRITE_STACK | OUT_Q1,
+            LEN(2) | PC_INI | chk_trap(trap),
+            
+            0ull, 0ull, 0ull, 0ull,
+        };
+    }
+    
+    consteval µcode_line emit_jump(µcode_type condition, bool trap) noexcept
+    {
+        return
+        {
+            LEN(1) | FETCH_INSTRUCTION,
+            LEN(1) | OUT_Q1 | ACU_WL,
+            LEN(1) | OUT_Q2 | ACU_WH,
+            LEN(1) | ACU_OE | PC_LRC | condition | chk_trap(trap),
+            
+            0ull, 0ull, 0ull, 0ull,
+        };
+    }
+    
+    
+    
+    constexpr auto write_µcode(void) noexcept
+    {
+        constexpr auto NTRAP = 0, TRAP = 0x80;
+        
+        std::array<µcode_line, std::numeric_limits<std::uint8_t>::max() + 1> µcode{};
+        
+        // misc
+        {
+            µcode[NOP | NTRAP] = emit_nop(false);
+            µcode[NOP |  TRAP] = emit_nop(true);
+            
+            µcode[BRK | NTRAP] = emit_brk();
+        }
+        
+        // r0 -> other register moving
+        {
+            µcode[MVB_A_B | NTRAP] = emit_mvb(RF_AI, RF_BO, false, false);
+            µcode[MVB_A_B |  TRAP] = emit_mvb(RF_AI, RF_BO, true, false);
+            
+            µcode[MVB_A_C | NTRAP] = emit_mvb(RF_AI, RF_CO, false, false);
+            µcode[MVB_A_C |  TRAP] = emit_mvb(RF_AI, RF_CO, true, false);
+            
+            µcode[MVB_A_D | NTRAP] = emit_mvb(RF_AI, RF_DO, false, false);
+            µcode[MVB_A_D |  TRAP] = emit_mvb(RF_AI, RF_DO, true, false);
+            
+            µcode[MVB_A_F | NTRAP] = emit_mvb(RF_AI, RF_FO, false, true);
+            µcode[MVB_A_F |  TRAP] = emit_mvb(RF_AI, RF_FO, true, true);
+        }
+        
+        
+        return µcode;
+    }
 }
+
+
 
 
 int main(int argc, const char** argv)
@@ -301,11 +384,17 @@ int main(int argc, const char** argv)
     if (argc == 2)
     {
         
+        
+       
+        
+        
+        return EXIT_SUCCESS;
     }
     
     else
     {
-        std::cout << std::format("[Error] {} arguments were passed, but 1 was expected", (argc - 1)) << std::endl;
+        std::fprintf(stderr, "[Error] %i arguments were passed, but 1 was expected\nExiting...\n", (argc - 1));
+        return EXIT_FAILURE;
     }
 }
 
