@@ -613,7 +613,7 @@ int main(int argc, const char** argv)
                 {
                     for (auto&& µop : µcode_line)
                     {
-                        file.write(reinterpret_cast<char*>(&µop), sizeof(µop));
+                        fisle.write(reinterpret_cast<char*>(&µop), sizeof(µop));
                     }
                 }
             }

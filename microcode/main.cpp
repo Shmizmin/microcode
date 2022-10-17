@@ -92,11 +92,10 @@ namespace
         FORCE_JUMP = BIT(54),
         REQUEST_JEZ = BIT(55),
         REQUEST_JCS = BIT(56),
-        REQUEST_JGZ = BIT(57),
-        CONNECT_FB = BIT(58),
-        OUT_Q1 = BIT(59),
-        OUT_Q2 = BIT(60),
-        SET_HALT = BIT(61),
+        CONNECT_FB = BIT(57),
+        OUT_Q1 = BIT(58),
+        OUT_Q2 = BIT(59),
+        SET_HALT = BIT(60),
         // /misc
     };
     
@@ -160,22 +159,6 @@ namespace
             LEN(2) | PC_INI | chk_trap(trap),
             
             0ull, 0ull, 0ull,
-        };
-    }
-    
-    consteval µcode_line emit_alumem(µcode_type dest_in, µcode_type dest_out, µcode_type op, bool trap) noexcept
-    {
-        return
-        {
-            LEN(3) | FETCH_INSTRUCTION,
-            LEN(3) | dest_out | ALU_WA,
-            LEN(3) | OUT_Q1 | ACU_WL,
-            LEN(3) | OUT_Q2 | ACU_WH,
-            LEN(3) | ACU_OE | LSU_RE | ALU_WB,
-            LEN(3) | op | ALU_OE | dest_in | RF_FI,
-            LEN(3) | PC_INI | chk_trap(trap),
-            
-            0ull,
         };
     }
     
@@ -314,19 +297,6 @@ namespace
         };
     }
     
-    consteval µcode_line emit_pushimm(bool trap) noexcept
-    {
-        return
-        {
-            LEN(2) | FETCH_INSTRUCTION,
-            LEN(2) | LSU_SP_DEC,
-            LEN(2) | LSU_WRITE_STACK | OUT_Q1,
-            LEN(2) | PC_INI | chk_trap(trap),
-            
-            0ull, 0ull, 0ull, 0ull,
-        };
-    }
-    
     consteval µcode_line emit_jump(µcode_type condition, bool trap) noexcept
     {
         return
@@ -340,6 +310,19 @@ namespace
         };
     }
     
+    consteval µcode_line emit_deref(µcode_type src1_out, µcode_type src2_out, µcode_type dest_in, bool trap)
+    {
+        return
+        {
+            LEN(1) | FETCH_INSTRUCTION,
+            LEN(1) | src1_out | ACU_WL,
+            LEN(1) | src2_out | ACU_WH,
+            LEN(1) | ACU_OE | LSU_RE | dest_in,
+            LEN(1) | PC_INI | chk_trap(trap),
+            
+            0ull, 0ull, 0ull,
+        };
+    }
     
     
     constexpr auto write_µcode(void) noexcept
@@ -446,6 +429,64 @@ namespace
             CREATE_ALU_NOT(D)
         }
         
+
+#define CREATE_LDB(x) µcode[LDB_##x##_IMM | NTRAP] = emit_ldbimm(RF_##x##I, false); \
+                      µcode[LDB_##x##_IMM |  TRAP] = emit_ldbimm(RF_##x##I, true); \
+                      µcode[LDB_##x##_MEM | NTRAP] = emit_ldbmem(RF_##x##I, false); \
+                      µcode[LDB_##x##_MEM |  TRAP] = emit_ldbmem(RF_##x##I, true);
+        {
+            CREATE_LDB(A)
+            CREATE_LDB(B)
+            CREATE_LDB(C)
+            CREATE_LDB(D)
+        }
+#undef CREATE_LDB
+       
+        //µcode_type src_out, bool trap
+#define CREATE_STB(x) µcode[STB_MEM_##x | NTRAP] = emit_stbmem(RF_##x##O, false); \
+                      µcode[STB_MEM_##x |  TRAP] = emit_stbmem(RF_##x##O, true);
+        {
+            CREATE_STB(A)
+            CREATE_STB(B)
+            CREATE_STB(C)
+            CREATE_STB(D)
+        }
+#undef CREATE_STB
+        
+        
+        µcode[PUSH_IP | NTRAP] = emit_puship(false);
+        µcode[PUSH_IP |  TRAP] = emit_puship(true);
+        
+        µcode[POP_IP | NTRAP] = emit_popip(false);
+        µcode[POP_IP |  TRAP] = emit_popip(true);
+        
+#define CREATE_STACKR(x) µcode[PUSH_##x | NTRAP] = emit_push8r(RF_##x##O, false); \
+                         µcode[PUSH_##x |  TRAP] = emit_push8r(RF_##x##O, true); \
+                         µcode[POP_##x | NTRAP] = emit_pop8r(RF_##x##O, false); \
+                         µcode[POP_##x |  TRAP] = emit_pop8r(RF_##x##O, true);
+        {
+            CREATE_STACKR(A)
+            CREATE_STACKR(B)
+            CREATE_STACKR(C)
+            CREATE_STACKR(D)
+        }
+#undef CREATE_STACKR
+        
+        µcode[JEZ_MEM | NTRAP] = emit_jump(REQUEST_JEZ, false);
+        µcode[JEZ_MEM |  TRAP] = emit_jump(REQUEST_JEZ, true);
+        
+        µcode[JCS_MEM | NTRAP] = emit_jump(REQUEST_JCS, false);
+        µcode[JCS_MEM |  TRAP] = emit_jump(REQUEST_JCS, true);
+        
+        µcode[JMP_MEM | NTRAP] = emit_jump(FORCE_JUMP, false);
+        µcode[JMP_MEM |  TRAP] = emit_jump(FORCE_JUMP, true);
+        
+        
+        µcode[DEREF_AB_A | NTRAP] = emit_deref(RF_AO, RF_BO, RF_AI, false);
+        µcode[DEREF_AB_A |  TRAP] = emit_deref(RF_AO, RF_BO, RF_BI, true);
+        
+        µcode[DEREF_CD_C | NTRAP] = emit_deref(RF_CO, RF_DO, RF_CI, false);
+        µcode[DEREF_CD_C |  TRAP] = emit_deref(RF_CO, RF_DO, RF_CI, true);
         
         return µcode;
     }
@@ -458,12 +499,26 @@ int main(int argc, const char** argv)
 {
     if (argc == 2)
     {
+        constexpr auto µcode = write_µcode();
         
+        if (auto file = std::ifstream(argv[1]); file.good())
+        {
+            for (const auto& µinsn : µcode)
+            {
+                for (const auto& µop : µinsn)
+                {
+                    file.write(reinterpret_cast<char*>(µop), sizeof(µop));
+                }
+            }
+            
+            return EXIT_SUCCESS;
+        }
         
-       
-        
-        
-        return EXIT_SUCCESS;
+        else
+        {
+            std::fprintf(stderr, "[Error] File %s could not be opened for writing\nExiting...\n", argv[1]);
+            return EXIT_FAILURE;
+        }
     }
     
     else
