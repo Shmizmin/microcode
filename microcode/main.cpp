@@ -501,7 +501,7 @@ int main(int argc, const char** argv)
     {
         constexpr auto µcode = write_µcode();
         
-        if (auto file = std::ifstream(argv[1]); file.good())
+        if (auto file = std::ofstream(argv[1]); file.good())
         {
             for (const auto& µinsn : µcode)
             {
