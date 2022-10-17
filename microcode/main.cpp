@@ -47,7 +47,7 @@ namespace
         // load store unit
         LSU_RE = BIT(10),
         LSU_WE = BIT(11),
-        LSU_SP_D = BIT(12), //stack pointer direction, 1 = decrement
+        LSU_SP_D = BIT(12), //stack * direction, 1 = decrement
         LSU_SP_WE = BIT(13),
         LSU_SP_EN = BIT(14),
         // /load store unit
@@ -100,13 +100,13 @@ namespace
         // /misc
     };
     
-    static constexpr const auto FETCH_INSTRUCTION = PC_OE | LSU_RE | IR_WE,
+    constexpr const auto FETCH_INSTRUCTION = PC_OE | LSU_RE | IR_WE,
                                 LSU_SP_INC = LSU_SP_EN | LSU_SP_WE,
                                 LSU_SP_DEC = LSU_SP_EN | LSU_SP_WE | LSU_SP_D,
-                                LSU_READ_STACK = LSU_SP_EN | LSU_RE,
-                                LSU_WRITE_STACK = LSU_SP_EN | LSU_WE;
+                            LSU_READ_STACK = LSU_SP_EN | LSU_RE,
+                           LSU_WRITE_STACK = LSU_SP_EN | LSU_WE;
     
-    //determine how the instruction register will be written to after a reset to begin
+    // TODO: determine how the instruction register will be written to after a reset to begin
     
     
     //maybe--on reset
@@ -344,7 +344,7 @@ namespace
     
     constexpr auto write_µcode(void) noexcept
     {
-        constexpr auto NTRAP = 0, TRAP = 0x80;
+        constexpr auto NTRAP = 0x00, TRAP = 0x80;
         
         std::array<µcode_line, std::numeric_limits<std::uint8_t>::max() + 1> µcode{};
         
@@ -358,7 +358,6 @@ namespace
         
 #define CREATE_MVB_X_Y(x, y, z) µcode[MVB_##x##_##y | NTRAP] = emit_mvb(RF_##x##I, RF_##y##O, false, z); \
                                 µcode[MVB_##x##_##y |  TRAP] = emit_mvb(RF_##x##I, RF_##y##O, true,  z);
-        
         // r0 -> other register moving
         {
             CREATE_MVB_X_Y(A, B, false)
@@ -390,16 +389,15 @@ namespace
             CREATE_MVB_X_Y(D, C, false)
             CREATE_MVB_X_Y(D, F, true)
         }
-        
 #undef CREATE_MVB_X_Y
-#define CREATE_ALUR_X_Y(x, y, o) µcode[ADC_##x##_##y | NTRAP] = emit_alu2reg(RF_##x##I, RF_##x##O, RF_##y##O, o, false); \
-                                 µcode[ADC_##x##_##y |  TRAP] = emit_alu2reg(RF_##x##I, RF_##x##O, RF_##y##O, o, true);
-#define ENUM_ALUR(x, y) CREATE_ALUR_X_Y(x, y, ALU_ADD) \
-                        CREATE_ALUR_X_Y(x, y, ALU_SUB) \
-                        CREATE_ALUR_X_Y(x, y, ALU_AND) \
-                        CREATE_ALUR_X_Y(x, y, ALU_OR)
         
-        // r0 -> other register adding
+        
+#define CREATE_ALUR_X_Y(x, y, o, w) µcode[w##_##x##_##y | NTRAP] = emit_alu2reg(RF_##x##I, RF_##x##O, RF_##y##O, o, false); \
+                                    µcode[w##_##x##_##y |  TRAP] = emit_alu2reg(RF_##x##I, RF_##x##O, RF_##y##O, o, true);
+#define ENUM_ALUR(x, y) CREATE_ALUR_X_Y(x, y, ALU_ADD, ADC) \
+                        CREATE_ALUR_X_Y(x, y, ALU_SUB, SBB) \
+                        CREATE_ALUR_X_Y(x, y, ALU_AND, AND) \
+                        CREATE_ALUR_X_Y(x, y, ALU_OR,  LOR)
         {
             ENUM_ALUR(A, B)
             ENUM_ALUR(A, C)
@@ -416,6 +414,36 @@ namespace
             ENUM_ALUR(D, A)
             ENUM_ALUR(D, B)
             ENUM_ALUR(D, C)
+        }
+#undef ENUM_ALUR
+#undef CREATE_ALUR_X_Y
+
+        //µcode_type dest_in, µcode_type dest_out, µcode_type op, bool trap
+#define CREATE_ALUI_X(x, o, w) µcode[w##_##x##_IMM | NTRAP] = emit_aluimm(RF_##x##I, RF_##x##O, o, false); \
+                               µcode[w##_##x##_IMM |  TRAP] = emit_aluimm(RF_##x##I, RF_##x##O, o, false);
+#define ENUM_ALUI(x) CREATE_ALUI_X(x, ALU_ADD, ADC) \
+                     CREATE_ALUI_X(x, ALU_SUB, SBB) \
+                     CREATE_ALUI_X(x, ALU_AND, AND) \
+                     CREATE_ALUI_X(x, ALU_OR,  LOR) \
+                     CREATE_ALUI_X(x, ALU_SHL, ROL) \
+                     CREATE_ALUI_X(x, ALU_SHR, ROR)
+        {
+            ENUM_ALUI(A)
+            ENUM_ALUI(B)
+            ENUM_ALUI(C)
+            ENUM_ALUI(D)
+        }
+#undef ENUM_ALUI
+#undef CREATE_ALUI
+
+        
+#define CREATE_ALU_NOT(x) µcode[NOT_##x | NTRAP] = emit_alunot(RF_##x##I, RF_##x##O, false); \
+                          µcode[NOT_##x |  TRAP] = emit_alunot(RF_##x##I, RF_##x##O, true);
+        {
+            CREATE_ALU_NOT(A)
+            CREATE_ALU_NOT(B)
+            CREATE_ALU_NOT(C)
+            CREATE_ALU_NOT(D)
         }
         
         
